@@ -2,21 +2,31 @@ from flask import Flask, request
 import requests
 import os
 
-# ساخت اپلیکیشن فلسک
 app = Flask(__name__)
 
-# خواندن توکن از متغیرهای محیطی که بعدا در Render تنظیم میکنیم
-RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN", "YOUR_DEFAULT_TOKEN")
+# خواندن توکن از متغیرهای محیطی Render
+RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
 
 @app.route('/receiveUpdate', methods=['POST'])
 def webhook():
     try:
+        # داده‌ها داخل یک آبجکت به نام 'update' قرار دارند
         data = request.get_json(force=True)
-        chat_id = data['chat_id']
-        test_response = "ربات با موفقیت از سرور Render پاسخ داد!"
-        send_message_to_rubika(chat_id, test_response)
+        update_object = data.get('update', {})
+
+        # استخراج اطلاعات از داخل آبجکت 'update'
+        chat_id = update_object.get('chat_id')
+        user_text = update_object.get('text')
+
+        # اگر همه چیز درست بود، پاسخ را ارسال کن
+        if chat_id and user_text:
+            final_response = "تبریک! ربات شما با موفقیت کامل ساخته شد و پاسخ داد. 🎉"
+            send_message_to_rubika(chat_id, final_response)
+
     except Exception as e:
-        print(f"Error: {e}")
+        # ثبت هرگونه خطای احتمالی
+        print(f"Error processing request: {e}")
+
     return "OK"
 
 def send_message_to_rubika(chat_id, text):
