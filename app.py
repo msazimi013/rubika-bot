@@ -14,23 +14,23 @@ def webhook():
         chat_id = update_object.get('chat_id')
 
         if chat_id:
-            final_response = "✅ این یک شروع تازه است! ربات با آخرین تحلیل از مستندات پاسخ داد."
+            final_response = "آخرین آزمایش: ارسال با فرمت متفاوت."
             send_message_to_rubika(chat_id, final_response)
     except Exception as e:
         print(f"Error processing request: {e}", file=sys.stderr)
     return "OK"
 
 def send_message_to_rubika(chat_id, text):
-    # آدرس پایه API بدون هیچ متدی در انتها
-    url = f"https://botapi.rubika.ir/v1/bots/{RUBIKA_BOT_TOKEN}/"
+    # آدرس صحیح متد طبق مستندات
+    url = f"https://botapi.rubika.ir/v1/bots/{RUBIKA_BOT_TOKEN}/sendMessage"
 
-    # ساختار نهایی payload که شامل نام متد نیز می‌باشد
+    # ساختار payload به صورت یک دیکشنری ساده
     payload = {
-        "method": "sendMessage",
         "chat_id": chat_id,
         "text": text
     }
 
-    print(f"--- Sending Final Payload Structure: {payload} ---", file=sys.stderr)
-    response = requests.post(url, json=payload)
+    # مهم: ارسال با پارامتر 'data' به جای 'json'
+    print(f"--- Sending as Form Data to Rubika: {payload} ---", file=sys.stderr)
+    response = requests.post(url, data=payload)
     print(f"--- Final Rubika API Response --- Status: {response.status_code}, Body: {response.text}", file=sys.stderr)
