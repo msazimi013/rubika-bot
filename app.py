@@ -1,35 +1,32 @@
 from flask import Flask, request
 import requests
 import os
+import sys # برای لاگ‌گیری دقیق
 
 app = Flask(__name__)
-
-# خواندن توکن از متغیرهای محیطی Render
 RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
 
 @app.route('/receiveUpdate', methods=['POST'])
 def webhook():
     try:
-        # داده‌ها داخل یک آبجکت به نام 'update' قرار دارند
         data = request.get_json(force=True)
         update_object = data.get('update', {})
-
-        # استخراج اطلاعات از داخل آبجکت 'update'
         chat_id = update_object.get('chat_id')
-        user_text = update_object.get('text')
 
-        # اگر همه چیز درست بود، پاسخ را ارسال کن
-        if chat_id and user_text:
-            final_response = "تبریک! ربات شما با موفقیت کامل ساخته شد و پاسخ داد. 🎉"
-            send_message_to_rubika(chat_id, final_response)
+        if chat_id:
+            response_text = "در حال ارسال پاسخ..."
+            send_message_to_rubika(chat_id, response_text)
 
     except Exception as e:
-        # ثبت هرگونه خطای احتمالی
-        print(f"Error processing request: {e}")
-
+        print(f"Error processing request: {e}", file=sys.stderr)
     return "OK"
 
 def send_message_to_rubika(chat_id, text):
     url = f"https://botapi.rubika.ir/v1/bots/{RUBIKA_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
+
+    print(f"--- Sending POST to Rubika API at {url} ---", file=sys.stderr)
+    response = requests.post(url, json=payload)
+
+    # این خط مهم‌ترین بخش است: ما پاسخ روبیکا را در لاگ چاپ می‌کنیم
+    print(f"--- Rubika API Response --- Status: {response.status_code}, Body: {response.text}", file=sys.stderr)
