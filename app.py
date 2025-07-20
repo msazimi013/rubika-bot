@@ -8,7 +8,7 @@ app = Flask(__name__)
 # خواندن توکن از متغیرهای محیطی که بعدا در Render تنظیم میکنیم
 RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN", "YOUR_DEFAULT_TOKEN")
 
-@app.route('/', methods=['POST'])
+@app.route('/receiveUpdate', methods=['POST'])
 def webhook():
     try:
         data = request.get_json(force=True)
