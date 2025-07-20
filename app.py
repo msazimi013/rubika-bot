@@ -4,7 +4,7 @@ import os
 import sys # برای لاگ‌گیری دقیق
 
 app = Flask(__name__)
-RUBIKA_BOT_TOKEN = os.environ.get("JHFC0XRMULRIXCNUCKEEPVBCOIYMTSPPBXQYIKKDASNGDIQDGJFXECIPHYOXABPE")
+RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
 
 @app.route('/receiveUpdate', methods=['POST'])
 def webhook():
