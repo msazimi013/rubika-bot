@@ -9,7 +9,8 @@ app = Flask(__name__)
 RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
 
 # گوش دادن به آدرس اصلی و ریشه سایت
-@app.route('/', methods=['POST'])
+@app.route('/receiveUpdate', methods=['POST'])
+
 def webhook():
     try:
         # دریافت و پردازش صحیح داده‌های تو در تو از روبیکا
