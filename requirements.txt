@@ -1,6 +1,6 @@
 Flask
 gunicorn
 rubka
-openai
+google-generativeai
 mutagen
 filetype
