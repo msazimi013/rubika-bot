@@ -1,35 +1,57 @@
-from flask import Flask, request
+from flask import Flask
 import requests
 import os
 import sys
+import time
+import threading
 
+# --- تنظیمات اولیه اپلیکیشن وب ---
 app = Flask(__name__)
 RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
 
-@app.route('/receiveUpdate', methods=['POST'])
-def webhook():
-    try:
-        data = request.get_json(force=True)
-        update_object = data.get('update', {})
-        chat_id = update_object.get('chat_id')
 
-        if chat_id:
-            final_response = "✅ ربات با API نسخه ۳ پاسخ داد! مشکل حل شد."
-            send_message_to_rubika(chat_id, final_response)
-    except Exception as e:
-        print(f"Error processing request: {e}", file=sys.stderr)
-    return "OK"
+# --- منطق اصلی ربات (که در پشت صحنه اجرا می‌شود) ---
+def poll_for_updates():
+    print("Starting Rubika bot polling thread...", file=sys.stderr)
+    last_update_id = 0
+    while True:
+        try:
+            BASE_URL = f"https://botapi.rubika.ir/v3/bots/{RUBIKA_BOT_TOKEN}/"
+            response = requests.post(BASE_URL + "getUpdates", json={"offset_id": last_update_id + 1}, timeout=30)
+            updates = response.json().get("data", {}).get("updates", [])
+
+            if updates:
+                for update in updates:
+                    chat_id = update.get("chat_id")
+                    text = update.get("text")
+
+                    if chat_id and text:
+                        print(f"New message: '{text}' from {chat_id}", file=sys.stderr)
+                        response_text = f"پاسخ از سرور رایگان: {text}"
+                        send_message_to_rubika(chat_id, response_text)
+
+                    last_update_id = update["update_id"]
+        except Exception as e:
+            print(f"Error in polling loop: {e}", file=sys.stderr)
+
+        time.sleep(1)
 
 def send_message_to_rubika(chat_id, text):
-    # **تغییر اصلی اینجاست: استفاده از v3**
     url = f"https://botapi.rubika.ir/v3/bots/{RUBIKA_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Error sending message: {e}", file=sys.stderr)
 
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
 
-    print(f"--- Sending to Rubika v3 API: {payload} ---", file=sys.stderr)
-    # استفاده از json=payload که روش استاندارد ارسال JSON است
-    response = requests.post(url, json=payload, timeout=10)
-    print(f"--- Rubika v3 API Response --- Status: {response.status_code}, Body: {response.text}", file=sys.stderr)
+# --- صفحه‌ای برای بیدار نگه داشتن سرور ---
+@app.route('/')
+def index():
+    return "Rubika Bot is running. Uptime check successful."
+
+
+# --- اجرای ربات در پشت صحنه ---
+polling_thread = threading.Thread(target=poll_for_updates)
+polling_thread.daemon = True
+polling_thread.start()
