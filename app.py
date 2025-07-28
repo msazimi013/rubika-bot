@@ -1,63 +1,64 @@
 from flask import Flask
-import requests
+from rubka import Robot, Message
+import openai
 import os
 import sys
-import time
 import threading
+import time
 
+# --- تنظیمات اولیه ---
 app = Flask(__name__)
-RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN")
+AUTH_KEY = os.environ.get("RUBIKA_AUTH_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-def poll_for_updates():
+# تنظیم کلید OpenAI
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+else:
+    print("کلید API برای OpenAI تنظیم نشده است!", file=sys.stderr)
+
+bot = Robot(AUTH_KEY)
+
+# --- منطق اصلی ربات ---
+def process_messages():
     print("Starting Rubika bot polling thread...", file=sys.stderr)
-    last_update_id = 0
-    while True:
+    for msg in bot.on_message():
         try:
-            BASE_URL = f"https://botapi.rubika.ir/v3/bots/{RUBIKA_BOT_TOKEN}/"
-            response = requests.post(BASE_URL + "getUpdates", json={"offset_id": last_update_id + 1}, timeout=30)
+            user_text = msg.text
+            if not user_text:
+                continue
 
-            # First, check if the request was successful (Status Code 200)
-            if response.status_code == 200:
-                # Second, try to parse the JSON, but handle if it's not valid
-                try:
-                    json_data = response.json()
-                    updates = json_data.get("data", {}).get("updates", [])
+            print(f"Received: '{user_text}' from {msg.chat_id}", file=sys.stderr)
 
-                    if updates:
-                        for update in updates:
-                            chat_id = update.get("chat_id")
-                            text = update.get("text")
+            # نمایش حالت "در حال نوشتن..." به کاربر
+            bot.send_action(msg.chat_id, "Typing")
 
-                            if chat_id and text:
-                                print(f"New message: '{text}' from {chat_id}", file=sys.stderr)
-                                response_text = f"پاسخ از سرور رایگان: {text}"
-                                send_message_to_rubika(chat_id, response_text)
+            # فراخوانی ChatGPT
+            response = openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "user", "content": user_text}
+                ]
+            )
+            ai_response = response.choices[0].message.content
 
-                            last_update_id = update["update_id"]
-                except requests.exceptions.JSONDecodeError:
-                    # Log an error if the response is not valid JSON
-                    print(f"JSONDecodeError: Rubika's response was not valid JSON.", file=sys.stderr)
-            else:
-                # If the status code is not 200, log the error and the response body
-                print(f"Rubika API Error for getUpdates: Status {response.status_code}, Body: {response.text}", file=sys.stderr)
+            # ارسال پاسخ هوش مصنوعی به کاربر
+            msg.reply(ai_response)
 
         except Exception as e:
-            print(f"An unexpected error occurred in polling loop: {e}", file=sys.stderr)
+            print(f"An error occurred: {e}", file=sys.stderr)
+            try:
+                # در صورت بروز خطا، یک پیام خطا به کاربر ارسال کن
+                msg.reply("متاسفانه در حال حاضر مشکلی در ارتباط با هوش مصنوعی وجود دارد. لطفاً بعداً دوباره تلاش کنید.")
+            except Exception as e2:
+                print(f"Could not send error reply: {e2}", file=sys.stderr)
 
-        time.sleep(2) # Increased sleep time slightly
-
-def send_message_to_rubika(chat_id, text):
-    url = f"https://botapi.rubika.ir/v3/bots/{RUBIKA_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Error sending message: {e}", file=sys.stderr)
-
+# --- صفحه‌ای برای بیدار نگه داشتن سرور ---
 @app.route('/')
 def index():
-    return "Rubika Bot is running. Uptime check successful."
+    return "ChatGPT Rubika Bot is running. Uptime check successful."
 
-polling_thread = threading.Thread(target=poll_for_updates)
+# --- اجرای ربات در پشت صحنه ---
+polling_thread = threading.Thread(target=process_messages)
 polling_thread.daemon = True
 polling_thread.start()
