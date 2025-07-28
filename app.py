@@ -4,23 +4,32 @@ import openai
 import os
 import sys
 import threading
-import time
 
 # --- تنظیمات اولیه ---
 app = Flask(__name__)
 AUTH_KEY = os.environ.get("RUBIKA_AUTH_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# تنظیم کلید OpenAI
-if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
-else:
+# بررسی و تنظیم کلید OpenAI
+if not OPENAI_API_KEY:
     print("کلید API برای OpenAI تنظیم نشده است!", file=sys.stderr)
+else:
+    openai.api_key = OPENAI_API_KEY
 
-bot = Robot(AUTH_KEY)
+# ساخت ربات با کتابخانه rubka
+# فقط در صورتی که کلید احراز هویت وجود داشته باشد
+bot = None
+if AUTH_KEY:
+    bot = Robot(AUTH_KEY)
+else:
+    print("کلید احراز هویت روبیکا (AUTH_KEY) تنظیم نشده است!", file=sys.stderr)
 
-# --- منطق اصلی ربات ---
+# --- منطق اصلی ربات (که در پشت صحنه اجرا می‌شود) ---
 def process_messages():
+    if not bot:
+        print("ربات به دلیل عدم وجود کلید احراز هویت، اجرا نشد.", file=sys.stderr)
+        return
+
     print("Starting Rubika bot polling thread...", file=sys.stderr)
     for msg in bot.on_message():
         try:
@@ -36,9 +45,7 @@ def process_messages():
             # فراخوانی ChatGPT
             response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "user", "content": user_text}
-                ]
+                messages=[{"role": "user", "content": user_text}]
             )
             ai_response = response.choices[0].message.content
 
@@ -48,17 +55,18 @@ def process_messages():
         except Exception as e:
             print(f"An error occurred: {e}", file=sys.stderr)
             try:
-                # در صورت بروز خطا، یک پیام خطا به کاربر ارسال کن
-                msg.reply("متاسفانه در حال حاضر مشکلی در ارتباط با هوش مصنوعی وجود دارد. لطفاً بعداً دوباره تلاش کنید.")
+                msg.reply("متاسفانه در حال حاضر مشکلی در ارتباط با هوش مصنوعی وجود دارد.")
             except Exception as e2:
                 print(f"Could not send error reply: {e2}", file=sys.stderr)
 
 # --- صفحه‌ای برای بیدار نگه داشتن سرور ---
 @app.route('/')
 def index():
-    return "ChatGPT Rubika Bot is running. Uptime check successful."
+    return "ChatGPT Rubika Bot is active and running."
 
 # --- اجرای ربات در پشت صحنه ---
-polling_thread = threading.Thread(target=process_messages)
-polling_thread.daemon = True
-polling_thread.start()
+# فقط در صورتی که ربات با موفقیت ساخته شده باشد، آن را اجرا کن
+if bot:
+    polling_thread = threading.Thread(target=process_messages)
+    polling_thread.daemon = True
+    polling_thread.start()
