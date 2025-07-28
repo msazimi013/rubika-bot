@@ -1,5 +1,5 @@
 from flask import Flask
-from rubka import Robot, Message
+from rubka import Robot
 import openai
 import os
 import sys
