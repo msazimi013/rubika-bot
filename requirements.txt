@@ -3,3 +3,4 @@ gunicorn
 rubka
 openai
 mutagen
+filetype
