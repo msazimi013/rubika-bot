@@ -28,8 +28,6 @@ def process_messages(bot: Robot, msg): # The function that will handle messages
 
         print(f"Received: '{user_text}' from {msg.chat_id}", file=sys.stderr)
 
-        bot.send_action(msg.chat_id, "Typing")
-
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": user_text}]
