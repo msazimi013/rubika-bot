@@ -18,13 +18,16 @@ conversation_history = {}
 user_data = {}
 
 # --- AI Model Configuration ---
-model = None
+text_model = None
+image_model = None # A separate model for images
 if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        text_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Use a dedicated, stable model for image generation
+        image_model = genai.GenerativeModel('imagegeneration@006') 
     except Exception as e:
-        print(f"Error configuring Gemini: {e}", file=sys.stderr)
+        print(f"Error configuring Google AI models: {e}", file=sys.stderr)
 else:
     print("Gemini API Key not set!", file=sys.stderr)
 
@@ -38,7 +41,7 @@ main_keypad = (
     .row(ChatKeypadBuilder().button("account_info", "👤 حساب کاربری"))
     .build()
 )
-
+# ... (aspect_ratio_keypad remains the same)
 aspect_ratio_keypad = (
     ChatKeypadBuilder()
     .row(ChatKeypadBuilder().button("aspect_1_1", "مربع (1:1)"))
@@ -53,48 +56,44 @@ def process_messages(bot: Robot, msg):
     try:
         user_text = msg.text
         chat_id = msg.chat_id
-        if not user_text or not model:
+        if not user_text or not (text_model and image_model):
             return
 
-        print(f"Received: '{user_text}' from {chat_id}", file=sys.stderr)
-
-        # Initialize user data if new
+        # ... (user data initialization and command handling remains the same) ...
         if chat_id not in user_data:
             user_data[chat_id] = {"mode": None, "image_options": {}}
-
-        # Command Handling
         if user_text == "/start" or user_text == "انصراف":
             user_data[chat_id]["mode"] = None
             msg.reply_keypad("خوش آمدید!", keypad=main_keypad)
             return
-        
-        # Start image generation flow
         if user_text == "🎨 ساخت تصویر":
             user_data[chat_id]["mode"] = "awaiting_aspect_ratio"
             msg.reply_keypad("لطفاً نسبت ابعاد تصویر خود را انتخاب کنید:", keypad=aspect_ratio_keypad)
             return
-
+            
         current_mode = user_data[chat_id].get("mode")
 
-        # Handle aspect ratio selection
         if current_mode == "awaiting_aspect_ratio":
-            aspect_map = {"مربع (1:1)": 1, "افقی (16:9)": 2, "عمودی (9:16)": 3}
+            # ... (aspect ratio handling remains the same) ...
+            aspect_map = {"مربع (1:1)": "1:1", "افقی (16:9)": "16:9", "عمودی (9:16)": "9:16"}
             if user_text in aspect_map:
                 user_data[chat_id]["image_options"]["aspect_ratio"] = aspect_map[user_text]
                 user_data[chat_id]["mode"] = "awaiting_image_prompt"
                 msg.reply("عالی! حالا موضوع خود را برای ساخت تصویر ارسال کنید:")
             else:
-                msg.reply_keypad("انتخاب نامعتبر است. لطفاً از دکمه‌ها استفاده کنید.", keypad=aspect_ratio_keypad)
+                msg.reply_keypad("انتخاب نامعتبر است.", keypad=aspect_ratio_keypad)
             return
 
-        # Handle image prompt and generate image
         if current_mode == "awaiting_image_prompt":
             sent_msg = msg.reply("⏳ در حال ساخت تصویر شما... لطفاً کمی صبر کنید.")
             try:
-                # Use the user's Persian text directly as the prompt
-                generation_prompt = user_text
+                aspect_ratio = user_data[chat_id]["image_options"]["aspect_ratio"]
                 
-                response = model.generate_content(generation_prompt, generation_config={"response_mime_type": "image/png"})
+                # Call the dedicated image model
+                response = image_model.generate_content(
+                    user_text, 
+                    generation_config={"aspect_ratio": aspect_ratio}
+                )
                 image_bytes = response.parts[0].data
                 
                 filename = f"/tmp/{uuid.uuid4()}.png"
@@ -116,7 +115,7 @@ def process_messages(bot: Robot, msg):
         if chat_id not in conversation_history:
             conversation_history[chat_id] = []
         
-        chat_session = model.start_chat(history=conversation_history[chat_id])
+        chat_session = text_model.start_chat(history=conversation_history[chat_id])
         response = chat_session.send_message(user_text)
         ai_response = response.text
         conversation_history[chat_id] = chat_session.history
