@@ -37,7 +37,6 @@ async def bridge_logic():
     while True:
         try:
             if not telegram_bot:
-                print("Telegram bot not initialized. Waiting...", file=sys.stderr)
                 time.sleep(30)
                 continue
 
@@ -53,7 +52,7 @@ async def bridge_logic():
                         rubika_bot.send_message(RUBIKA_TARGET_CHAT_ID, forwarded_message)
                         print(f"Forwarded text from {sender_name}", file=sys.stderr)
 
-                    # Photo Message Handling
+                    # Photo Message Handling (Correct Method)
                     elif update.message.photo:
                         caption = update.message.caption or ""
                         forwarded_caption = f"Photo from {sender_name} (Telegram):\n\n{caption}"
@@ -63,11 +62,24 @@ async def bridge_logic():
                         temp_photo_path = f"{photo_file_id}.jpg"
                         await file.download_to_drive(custom_path=temp_photo_path)
                         
-                        # Use the correct 'send_file' method with file_type='Photo'
-                        rubika_bot.send_file(RUBIKA_TARGET_CHAT_ID, file=temp_photo_path, file_type='Photo', caption=forwarded_caption)
-                        print(f"Forwarded photo from {sender_name}", file=sys.stderr)
-                        
-                        os.remove(temp_photo_path)
+                        try:
+                            # Step 1: Upload the file and get its data
+                            print(f"Uploading photo to Rubika servers...", file=sys.stderr)
+                            file_data = rubika_bot.request_send_file(temp_photo_path)
+                            
+                            # Step 2: Send the message with the uploaded file data
+                            print(f"Sending uploaded photo...", file=sys.stderr)
+                            rubika_bot.send_message(
+                                RUBIKA_TARGET_CHAT_ID,
+                                message_type='Photo',
+                                file_inline=file_data,
+                                caption_text=forwarded_caption
+                            )
+                            print(f"Forwarded photo from {sender_name}", file=sys.stderr)
+
+                        finally:
+                            # Clean up the temporary file
+                            os.remove(temp_photo_path)
                 
                 update_offset = update.update_id + 1
         except Exception as e:
