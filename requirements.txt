@@ -1,6 +1,7 @@
 Flask
 gunicorn
 rubka
+python-telegram-bot
+tqdm
 mutagen
 filetype
-python-telegram-bot
