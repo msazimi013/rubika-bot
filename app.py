@@ -1,140 +1,56 @@
-from flask import Flask
+import telegram
 from rubka import Robot
-from rubka.keypad import ChatKeypadBuilder
-import google.generativeai as genai
-import os
-import sys
-import threading
-from datetime import date
-import uuid
+import asyncio
 
-# --- Setup ---
-app = Flask(__name__)
-AUTH_KEY = os.environ.get("RUBIKA_AUTH_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# --- CONFIGURATION ---
+# 1. Get this from @BotFather on TELEGRAM
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
-# --- User Data Management ---
-conversation_history = {}
-user_data = {}
+# 2. Get this from @BotFather on RUBIKA (as you have proven works)
+RUBIKA_BOT_AUTH = "YOUR_RUBIKA_BOT_TOKEN"
 
-# --- AI Model Configuration ---
-text_model = None
-image_model = None # A separate model for images
-if GEMINI_API_KEY:
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        text_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        # Use a dedicated, stable model for image generation
-        image_model = genai.GenerativeModel('imagegeneration@006') 
-    except Exception as e:
-        print(f"Error configuring Google AI models: {e}", file=sys.stderr)
-else:
-    print("Gemini API Key not set!", file=sys.stderr)
+# 3. The destination chat_id in Rubika where messages should be sent
+# This can be your own user GUID or a group/channel ID
+RUBIKA_TARGET_CHAT_ID = "YOUR_RUBIKA_DESTINATION_CHAT_ID"
 
-bot = Robot(AUTH_KEY)
+# --- INITIALIZATION ---
+rubika_bot = Robot(RUBIKA_BOT_AUTH)
 
-# --- Keyboards ---
-main_keypad = (
-    ChatKeypadBuilder()
-    .row(ChatKeypadBuilder().button("start_chat", "💬 چت با هوش مصنوعی"))
-    .row(ChatKeypadBuilder().button("image_gen_mode", "🎨 ساخت تصویر"))
-    .row(ChatKeypadBuilder().button("account_info", "👤 حساب کاربری"))
-    .build()
-)
-# ... (aspect_ratio_keypad remains the same)
-aspect_ratio_keypad = (
-    ChatKeypadBuilder()
-    .row(ChatKeypadBuilder().button("aspect_1_1", "مربع (1:1)"))
-    .row(ChatKeypadBuilder().button("aspect_16_9", "افقی (16:9)"), ChatKeypadBuilder().button("aspect_9_16", "عمودی (9:16)"))
-    .row(ChatKeypadBuilder().button("cancel", "انصراف"))
-    .build()
-)
+async def main():
+    """
+    Fetches updates from Telegram and forwards them to Rubika.
+    """
+    print("Bridge bot starting...")
+    # Get the Telegram bot info to ensure the token is correct
+    telegram_bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+    bot_info = await telegram_bot.get_me()
+    print(f"Logged in to Telegram as: {bot_info.first_name} (@{bot_info.username})")
+    
+    # The offset tells Telegram which messages we have already processed
+    update_offset = 0
 
-# --- Main Bot Logic ---
-@bot.on_message()
-def process_messages(bot: Robot, msg):
-    try:
-        user_text = msg.text
-        chat_id = msg.chat_id
-        if not user_text or not (text_model and image_model):
-            return
+    while True:
+        try:
+            # Get new messages from Telegram
+            updates = await telegram_bot.get_updates(offset=update_offset, timeout=10)
 
-        # ... (user data initialization and command handling remains the same) ...
-        if chat_id not in user_data:
-            user_data[chat_id] = {"mode": None, "image_options": {}}
-        if user_text == "/start" or user_text == "انصراف":
-            user_data[chat_id]["mode"] = None
-            msg.reply_keypad("خوش آمدید!", keypad=main_keypad)
-            return
-        if user_text == "🎨 ساخت تصویر":
-            user_data[chat_id]["mode"] = "awaiting_aspect_ratio"
-            msg.reply_keypad("لطفاً نسبت ابعاد تصویر خود را انتخاب کنید:", keypad=aspect_ratio_keypad)
-            return
-            
-        current_mode = user_data[chat_id].get("mode")
-
-        if current_mode == "awaiting_aspect_ratio":
-            # ... (aspect ratio handling remains the same) ...
-            aspect_map = {"مربع (1:1)": "1:1", "افقی (16:9)": "16:9", "عمودی (9:16)": "9:16"}
-            if user_text in aspect_map:
-                user_data[chat_id]["image_options"]["aspect_ratio"] = aspect_map[user_text]
-                user_data[chat_id]["mode"] = "awaiting_image_prompt"
-                msg.reply("عالی! حالا موضوع خود را برای ساخت تصویر ارسال کنید:")
-            else:
-                msg.reply_keypad("انتخاب نامعتبر است.", keypad=aspect_ratio_keypad)
-            return
-
-        if current_mode == "awaiting_image_prompt":
-            sent_msg = msg.reply("⏳ در حال ساخت تصویر شما... لطفاً کمی صبر کنید.")
-            try:
-                aspect_ratio = user_data[chat_id]["image_options"]["aspect_ratio"]
+            for update in updates:
+                if update.message and update.message.text:
+                    user_message = update.message.text
+                    print(f"Received from Telegram: {user_message}")
+                    
+                    # Forward the message to Rubika
+                    rubika_bot.send_message(RUBIKA_TARGET_CHAT_ID, user_message)
+                    print("Forwarded to Rubika.")
                 
-                # Call the dedicated image model
-                response = image_model.generate_content(
-                    user_text, 
-                    generation_config={"aspect_ratio": aspect_ratio}
-                )
-                image_bytes = response.parts[0].data
-                
-                filename = f"/tmp/{uuid.uuid4()}.png"
-                with open(filename, "wb") as f:
-                    f.write(image_bytes)
+                # Update the offset to avoid re-reading the same message
+                update_offset = update.update_id + 1
 
-                bot.send_photo(chat_id, photo=filename, caption=f"تصویر شما با موضوع: {user_text}")
-                os.remove(filename)
-                bot.delete_messages(chat_id, [sent_msg["data"]["message_id"]])
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
-            except Exception as e:
-                print(f"Imagen error: {e}", file=sys.stderr)
-                bot.edit_message_text(chat_id, sent_msg["data"]["message_id"], "❌ خطایی هنگام ساخت تصویر رخ داد.")
-            
-            user_data[chat_id]["mode"] = None # Reset mode
-            return
-
-        # --- Default Text Generation Flow ---
-        if chat_id not in conversation_history:
-            conversation_history[chat_id] = []
-        
-        chat_session = text_model.start_chat(history=conversation_history[chat_id])
-        response = chat_session.send_message(user_text)
-        ai_response = response.text
-        conversation_history[chat_id] = chat_session.history
-        
-        msg.reply_keypad(ai_response, keypad=main_keypad)
-
-    except Exception as e:
-        print(f"A general error occurred: {e}", file=sys.stderr)
-        msg.reply("خطایی رخ داد. لطفاً با دستور /start مجدداً شروع کنید.")
-
-# --- Web Server and Bot Execution (No changes here) ---
-@app.route('/')
-def index():
-    return "Gemini/Imagen Rubika Bot is active."
-
-def run_bot():
-    print("Starting the Rubika bot's main loop...", file=sys.stderr)
-    bot.run()
-
-bot_thread = threading.Thread(target=run_bot)
-bot_thread.daemon = True
-bot_thread.start()
+# --- START THE BOT ---
+if __name__ == "__main__":
+    # To run this script, you need to install the telegram library:
+    # pip install python-telegram-bot
+    asyncio.run(main())
