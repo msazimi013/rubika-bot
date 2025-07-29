@@ -1,6 +1,6 @@
 Flask
 gunicorn
 rubka
-google-generativeai
 mutagen
 filetype
+python-telegram-bot
