@@ -25,11 +25,10 @@ except Exception as e:
     rubika_bot = None
     telegram_bot = None
 
-# --- Main Bridge Logic (runs in background) ---
+# --- Main Bridge Logic ---
 async def bridge_logic():
     global bot_started
     if bot_started:
-        # If another thread already started the bot, do nothing.
         return
     bot_started = True
 
@@ -46,34 +45,33 @@ async def bridge_logic():
             for update in updates:
                 if update.message:
                     sender_name = update.message.from_user.first_name
-
-                    # Handle Text Messages
+                    
+                    # Text Message Handling
                     if update.message.text:
                         user_message = update.message.text
                         forwarded_message = f"Message from {sender_name} (Telegram):\n\n{user_message}"
-
                         rubika_bot.send_message(RUBIKA_TARGET_CHAT_ID, forwarded_message)
                         print(f"Forwarded text from {sender_name}", file=sys.stderr)
 
-                    # Handle Photo Messages
+                    # Photo Message Handling
                     elif update.message.photo:
                         caption = update.message.caption or ""
                         forwarded_caption = f"Photo from {sender_name} (Telegram):\n\n{caption}"
-
+                        
                         photo_file_id = update.message.photo[-1].file_id
                         file = await telegram_bot.get_file(photo_file_id)
                         temp_photo_path = f"{photo_file_id}.jpg"
                         await file.download_to_drive(custom_path=temp_photo_path)
-
-                        rubika_bot.send_photo(RUBIKA_TARGET_CHAT_ID, photo=temp_photo_path, caption=forwarded_caption)
+                        
+                        # Use the correct 'send_file' method with file_type='Photo'
+                        rubika_bot.send_file(RUBIKA_TARGET_CHAT_ID, file=temp_photo_path, file_type='Photo', caption=forwarded_caption)
                         print(f"Forwarded photo from {sender_name}", file=sys.stderr)
-
+                        
                         os.remove(temp_photo_path)
-
+                
                 update_offset = update.update_id + 1
         except Exception as e:
             print(f"An error in bridge_logic: {e}", file=sys.stderr)
-            # If error is due to conflict, wait longer before retrying
             if 'Conflict' in str(e):
                 time.sleep(60)
             else:
