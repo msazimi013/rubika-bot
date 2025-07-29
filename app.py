@@ -10,27 +10,52 @@ import time
 # --- Setup ---
 app = Flask(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-RUBIKA_BOT_TOKEN = os.environ.get("RUBIKA_BOT_TOKEN") # Using the correct name
+RUBIKA_AUTH_KEY = os.environ.get("RUBIKA_AUTH_KEY")
 RUBIKA_TARGET_CHAT_ID = os.environ.get("RUBIKA_TARGET_CHAT_ID")
 
-rubika_bot = Robot(RUBIKA_BOT_TOKEN)
+rubika_bot = Robot(RUBIKA_AUTH_KEY)
 telegram_bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
-# --- Main Bridge Logic (runs in background) ---
+# --- Main Bridge Logic (now with photo support) ---
 async def bridge_logic():
-    print("Starting the Telegram-Rubika bridge thread...", file=sys.stderr)
+    print("Starting the Telegram-Rubika bridge thread (with photo support)...", file=sys.stderr)
     update_offset = 0
     while True:
         try:
             updates = await telegram_bot.get_updates(offset=update_offset, timeout=30)
             for update in updates:
-                if update.message and update.message.text:
-                    user_message = update.message.text
+                if update.message:
                     sender_name = update.message.from_user.first_name
-                    forwarded_message = f"Message from {sender_name} (Telegram):\n\n{user_message}"
                     
-                    rubika_bot.send_message(RUBIKA_TARGET_CHAT_ID, forwarded_message)
-                    print(f"Forwarded message from {sender_name}", file=sys.stderr)
+                    # --- Text Message Handling ---
+                    if update.message.text:
+                        user_message = update.message.text
+                        forwarded_message = f"Message from {sender_name} (Telegram):\n\n{user_message}"
+                        
+                        rubika_bot.send_message(RUBIKA_TARGET_CHAT_ID, forwarded_message)
+                        print(f"Forwarded text from {sender_name}", file=sys.stderr)
+
+                    # --- Photo Message Handling ---
+                    elif update.message.photo:
+                        print("Photo message detected from Telegram...", file=sys.stderr)
+                        # Get the caption (if it exists)
+                        caption = update.message.caption or ""
+                        forwarded_caption = f"Photo from {sender_name} (Telegram):\n\n{caption}"
+                        
+                        # Get the highest quality photo
+                        photo_file_id = update.message.photo[-1].file_id
+                        
+                        # Download the photo from Telegram
+                        file = await telegram_bot.get_file(photo_file_id)
+                        temp_photo_path = f"{photo_file_id}.jpg"
+                        await file.download_to_drive(custom_path=temp_photo_path)
+                        
+                        # Send the downloaded photo to Rubika
+                        rubika_bot.send_photo(RUBIKA_TARGET_CHAT_ID, photo=temp_photo_path, caption=forwarded_caption)
+                        print(f"Forwarded photo from {sender_name}", file=sys.stderr)
+                        
+                        # Clean up the temporary file
+                        os.remove(temp_photo_path)
                 
                 update_offset = update.update_id + 1
         except Exception as e:
@@ -40,12 +65,12 @@ async def bridge_logic():
 def run_async_loop():
     asyncio.run(bridge_logic())
 
-# --- Web Server to Keep Bot Alive ---
+# --- Web Server to Keep Bot Alive (No changes here) ---
 @app.route('/')
 def index():
     return "Telegram-Rubika Bridge is active."
 
-# --- Start the Bot ---
+# --- Start the Bot (No changes here) ---
 bot_thread = threading.Thread(target=run_async_loop)
 bot_thread.daemon = True
 bot_thread.start()
