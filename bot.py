@@ -2,8 +2,8 @@ import os
 import asyncio
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-# توابع ارسال پیام مستقیما وارد می شوند
-from rubpy.client import send_message, send_photo, send_video, send_file
+# ### <<<< مرحله ۱: وارد کردن کلاس اصلی Client >>>> ###
+from rubpy.client import Client
 import threading
 from flask import Flask
 
@@ -18,7 +18,10 @@ DESTINATION_RUBIKA_GUID = os.getenv('DESTINATION_RUBIKA_GUID')
 if not os.path.exists('temp_downloads'):
     os.makedirs('temp_downloads')
 
-# راه‌اندازی وب‌سرور Flask برای بیدار نگه داشتن سرویس
+# ### <<<< مرحله ۲: ساخت یک نمونه (instance) از کلاس Client >>>> ###
+rubika_client = Client(RUBIKA_AUTH_KEY)
+
+# راه‌اندازی وب‌سرور Flask
 app = Flask(__name__)
 
 @app.route('/')
@@ -29,23 +32,23 @@ def run_flask():
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
-# این تابع بازنویسی شده است تا از توابع مستقیم استفاده کند
+# ### <<<< مرحله ۳: فراخوانی متدها روی آبجکت ساخته شده >>>> ###
 async def forward_to_rubika(file_path=None, caption=None):
     try:
-        # دیگر آبجکت bot وجود ندارد، در هر فراخوانی auth key را ارسال می کنیم
         if file_path:
+            # بر اساس مستندات، نام متدها به این شکل است
             if file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
                 print(f"Sending photo: {file_path} with caption: {caption}")
-                await send_photo(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
+                await rubika_client.send_photo(DESTINATION_RUBIKA_GUID, file_path, caption) #
             elif file_path.lower().endswith(('.mp4', '.avi', '.mov')):
                 print(f"Sending video: {file_path} with caption: {caption}")
-                await send_video(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
+                await rubika_client.send_video(DESTINATION_RUBIKA_GUID, file_path, caption) #
             else:
-                 print(f"Sending file: {file_path} with caption: {caption}")
-                 await send_file(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
+                 print(f"Sending document: {file_path} with caption: {caption}")
+                 await rubika_client.send_document(DESTINATION_RUBIKA_GUID, file_path, caption) #
         elif caption:
             print(f"Sending text: {caption}")
-            await send_message(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, caption)
+            await rubika_client.send_message(DESTINATION_RUBIKA_GUID, text=caption) #
         print("Message forwarded to Rubika successfully.")
         return True
     except Exception as e:
