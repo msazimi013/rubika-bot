@@ -65,7 +65,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             file_to_download = await message.document.get_file()
             file_path = os.path.join('temp_downloads', message.document.file_name)
 
-        if file_path:
+        if file_to_download:
             print(f"Downloading file to: {file_path}")
             await file_to_download.download_to_drive(file_path)
 
@@ -75,7 +75,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             os.remove(file_path)
             print(f"Temporary file {file_path} deleted.")
 
-# ### <<<< تابع main بازنویسی شده به صورت async >>>> ###
 async def main() -> None:
     # اجرای وب سرور در یک ترد جداگانه
     flask_thread = threading.Thread(target=run_flask)
@@ -85,22 +84,17 @@ async def main() -> None:
     # افزودن پردازشگر به اپلیکیشن تلگرام
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL, message_handler))
 
-    # استفاده از async with برای مدیریت خودکار اتصال‌ها
     async with application:
-        # ### <<<< مرحله ۱: اتصال به روبیکا >>>> ###
         print("Connecting to Rubika...")
         await rubika_client.connect()
         print("Connected to Rubika successfully.")
         
-        # ### <<<< مرحله ۲: شروع ربات تلگرام >>>> ###
         print("Starting Telegram bot polling...")
         await application.start()
         await application.updater.start_polling(drop_pending_updates=True)
         
-        # ربات را برای همیشه در حال اجرا نگه می‌داریم
         while True:
             await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    # اجرای تابع async اصلی
     asyncio.run(main())
