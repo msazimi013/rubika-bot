@@ -1,4 +1,3 @@
 python-telegram-bot[job-queue]
-rubipy
+git+https://github.com/shayan-alv/rubipy.git
 flask
-asyncio
