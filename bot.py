@@ -7,7 +7,7 @@ import threading
 from flask import Flask
 import logging
 
-# --- تنظیم لاگ‌ها برای دیدن تمام اتفاقات ---
+# --- تنظیم لاگ‌ها ---
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
@@ -28,6 +28,7 @@ if not os.path.exists('temp_downloads'):
 # ساخت نمونه‌ها در سطح ماژول
 rubika_client = Client(RUBIKA_AUTH_KEY)
 app = Flask(__name__)
+application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 @app.route('/')
 def home():
@@ -83,35 +84,34 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             os.remove(file_path)
             logger.info(f"Temporary file {file_path} deleted.")
 
-def main() -> None:
-    """تابع اصلی برای راه‌اندازی همه چیز."""
-    # ۱. اجرای وب سرور در یک ترد جداگانه
+# ### <<<< تابع main با ساختار استاندارد و نهایی >>>> ###
+async def main() -> None:
+    # اجرای وب سرور در یک ترد جداگانه
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    logger.info("Flask server started in a separate thread.")
+    logger.info("Flask server started.")
 
-    # ۲. ساخت اپلیکیشن تلگرام
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # افزودن پردازشگر به اپلیکیشن تلگرام
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL, message_handler))
 
-    # ۳. تابع async داخلی برای مدیریت اتصال‌ها
-    async def run_all():
-        try:
-            # اتصال به روبیکا
-            logger.info("Connecting to Rubika...")
-            await rubika_client.connect()
-            logger.info("Connected to Rubika successfully.")
-
-            # شروع ربات تلگرام
-            logger.info("Starting Telegram bot polling...")
-            await application.run_polling(drop_pending_updates=True)
-        except Exception as e:
-            logger.error(f"An error occurred during startup or runtime: {e}")
-
-    # ۴. اجرای حلقه async
-    logger.info("Starting async event loop.")
-    asyncio.run(run_all())
+    # استفاده از یک بلوک with برای مدیریت صحیح راه‌اندازی و خاموش شدن
+    async with application:
+        # ۱. اتصال به روبیکا
+        logger.info("Connecting to Rubika...")
+        await rubika_client.connect()
+        logger.info("Connected to Rubika successfully.")
+        
+        # ۲. شروع ربات تلگرام با پاک کردن آپدیت‌های در صف
+        logger.info("Starting Telegram bot polling...")
+        await application.initialize()
+        await application.updater.start_polling(drop_pending_updates=True)
+        await application.start()
+        
+        # ۳. ربات را برای همیشه در حال اجرا نگه می‌داریم
+        logger.info("Bot is now running indefinitely.")
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    # اجرای تابع async اصلی
+    asyncio.run(main())
