@@ -2,7 +2,7 @@ import os
 import asyncio
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from rubika.bot import Bot # <--- این خط تغییر کرده است
+from rubpy import Bot # <--- این خط به حالت صحیح برگشت
 import threading
 from flask import Flask
 
