@@ -17,8 +17,10 @@ DESTINATION_RUBIKA_GUID = os.getenv('DESTINATION_RUBIKA_GUID')
 if not os.path.exists('temp_downloads'):
     os.makedirs('temp_downloads')
 
+# ساخت نمونه‌ها در سطح ماژول
 rubika_client = Client(RUBIKA_AUTH_KEY)
 app = Flask(__name__)
+application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 @app.route('/')
 def home():
@@ -68,29 +70,37 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await file_to_download.download_to_drive(file_path)
 
         await forward_to_rubika(file_path, caption)
-
     finally:
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
             print(f"Temporary file {file_path} deleted.")
 
-def main() -> None:
-    """شروع به کار ربات با پاک کردن آپدیت‌های قبلی."""
+# ### <<<< تابع main بازنویسی شده به صورت async >>>> ###
+async def main() -> None:
     # اجرای وب سرور در یک ترد جداگانه
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # ساخت اپلیکیشن تلگرام
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # افزودن پردازشگر به اپلیکیشن تلگرام
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL, message_handler))
 
-    # اجرای ربات با پاک کردن آپدیت‌های در صف
-    print("Telegram bot is starting...")
-    # این خطوط به جای application.run_polling() استفاده می‌شوند
-    # تا مشکل Conflict حل شود.
-    application.run_polling(drop_pending_updates=True)
-
+    # استفاده از async with برای مدیریت خودکار اتصال‌ها
+    async with application:
+        # ### <<<< مرحله ۱: اتصال به روبیکا >>>> ###
+        print("Connecting to Rubika...")
+        await rubika_client.connect()
+        print("Connected to Rubika successfully.")
+        
+        # ### <<<< مرحله ۲: شروع ربات تلگرام >>>> ###
+        print("Starting Telegram bot polling...")
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        
+        # ربات را برای همیشه در حال اجرا نگه می‌داریم
+        while True:
+            await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    main()
+    # اجرای تابع async اصلی
+    asyncio.run(main())
