@@ -5,6 +5,14 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from rubpy.client import Client
 import threading
 from flask import Flask
+import logging
+
+# --- تنظیم لاگ‌ها برای دیدن تمام اتفاقات ---
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 # --- بخش تنظیمات ---
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -20,7 +28,6 @@ if not os.path.exists('temp_downloads'):
 # ساخت نمونه‌ها در سطح ماژول
 rubika_client = Client(RUBIKA_AUTH_KEY)
 app = Flask(__name__)
-application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 @app.route('/')
 def home():
@@ -41,19 +48,18 @@ async def forward_to_rubika(file_path=None, caption=None):
                  await rubika_client.send_document(DESTINATION_RUBIKA_GUID, file_path, caption)
         elif caption:
             await rubika_client.send_message(DESTINATION_RUBIKA_GUID, text=caption)
-        print("Message forwarded to Rubika successfully.")
+        logger.info("Message forwarded to Rubika successfully.")
     except Exception as e:
-        print(f"Error sending to Rubika: {e}")
+        logger.error(f"Error sending to Rubika: {e}")
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.channel_post
     if not message or message.chat_id != SOURCE_TELEGRAM_CHANNEL_ID:
         return
 
-    print(f"New message received from Telegram channel {message.chat_id}")
+    logger.info(f"New message received from Telegram channel {message.chat_id}")
     caption = message.caption or message.text
     file_path = None
-    # ### <<<< مشکل اول در این خط حل شد >>>> ###
     file_to_download = None
 
     try:
@@ -68,41 +74,44 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             file_path = os.path.join('temp_downloads', message.document.file_name)
 
         if file_to_download:
-            print(f"Downloading file to: {file_path}")
+            logger.info(f"Downloading file to: {file_path}")
             await file_to_download.download_to_drive(file_path)
 
         await forward_to_rubika(file_path, caption)
     finally:
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
-            print(f"Temporary file {file_path} deleted.")
+            logger.info(f"Temporary file {file_path} deleted.")
 
-# ### <<<< مشکل دوم با این ساختار جدید حل شد >>>> ###
-async def main() -> None:
-    # اجرای وب سرور در یک ترد جداگانه
+def main() -> None:
+    """تابع اصلی برای راه‌اندازی همه چیز."""
+    # ۱. اجرای وب سرور در یک ترد جداگانه
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
+    logger.info("Flask server started in a separate thread.")
 
-    # افزودن پردازشگر به اپلیکیشن تلگرام
+    # ۲. ساخت اپلیکیشن تلگرام
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL, message_handler))
 
-    # استفاده از یک بلوک with برای مدیریت صحیح راه‌اندازی و خاموش شدن
-    async with application:
-        # ۱. اتصال به روبیکا
-        print("Connecting to Rubika...")
-        await rubika_client.connect()
-        print("Connected to Rubika successfully.")
-        
-        # ۲. شروع ربات تلگرام با پاک کردن آپدیت‌های در صف
-        print("Starting Telegram bot polling...")
-        await application.start()
-        await application.updater.start_polling(drop_pending_updates=True)
-        
-        # ۳. ربات را برای همیشه در حال اجرا نگه می‌داریم
-        while True:
-            await asyncio.sleep(3600)
+    # ۳. تابع async داخلی برای مدیریت اتصال‌ها
+    async def run_all():
+        try:
+            # اتصال به روبیکا
+            logger.info("Connecting to Rubika...")
+            await rubika_client.connect()
+            logger.info("Connected to Rubika successfully.")
+
+            # شروع ربات تلگرام
+            logger.info("Starting Telegram bot polling...")
+            await application.run_polling(drop_pending_updates=True)
+        except Exception as e:
+            logger.error(f"An error occurred during startup or runtime: {e}")
+
+    # ۴. اجرای حلقه async
+    logger.info("Starting async event loop.")
+    asyncio.run(run_all())
 
 if __name__ == "__main__":
-    # اجرای تابع async اصلی
-    asyncio.run(main())
+    main()
