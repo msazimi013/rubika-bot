@@ -2,7 +2,8 @@ import os
 import asyncio
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from rubpy.client import Bot # ### <<<< این خط به طور نهایی اصلاح شد >>>> ###
+# توابع ارسال پیام مستقیما وارد می شوند
+from rubpy.client import send_message, send_photo, send_video, send_file
 import threading
 from flask import Flask
 
@@ -17,9 +18,6 @@ DESTINATION_RUBIKA_GUID = os.getenv('DESTINATION_RUBIKA_GUID')
 if not os.path.exists('temp_downloads'):
     os.makedirs('temp_downloads')
 
-# راه‌اندازی ربات روبیکا
-rubika_bot = Bot(RUBIKA_AUTH_KEY)
-
 # راه‌اندازی وب‌سرور Flask برای بیدار نگه داشتن سرویس
 app = Flask(__name__)
 
@@ -31,21 +29,23 @@ def run_flask():
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
+# این تابع بازنویسی شده است تا از توابع مستقیم استفاده کند
 async def forward_to_rubika(file_path=None, caption=None):
     try:
+        # دیگر آبجکت bot وجود ندارد، در هر فراخوانی auth key را ارسال می کنیم
         if file_path:
             if file_path.lower().endswith(('.jpg', '.jpeg', '.png')):
                 print(f"Sending photo: {file_path} with caption: {caption}")
-                await rubika_bot.send_photo(DESTINATION_RUBIKA_GUID, file_path, caption)
+                await send_photo(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
             elif file_path.lower().endswith(('.mp4', '.avi', '.mov')):
                 print(f"Sending video: {file_path} with caption: {caption}")
-                await rubika_bot.send_video(DESTINATION_RUBIKA_GUID, file_path, caption)
+                await send_video(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
             else:
                  print(f"Sending file: {file_path} with caption: {caption}")
-                 await rubika_bot.send_file(DESTINATION_RUBIKA_GUID, file_path, caption)
+                 await send_file(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, file_path, caption)
         elif caption:
             print(f"Sending text: {caption}")
-            await rubika_bot.send_message(DESTINATION_RUBIKA_GUID, caption)
+            await send_message(RUBIKA_AUTH_KEY, DESTINATION_RUBIKA_GUID, caption)
         print("Message forwarded to Rubika successfully.")
         return True
     except Exception as e:
